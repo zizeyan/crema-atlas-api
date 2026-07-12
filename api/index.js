@@ -1,6 +1,5 @@
 const express = require('express');
 const cors = require('cors');
-const serverless = require('serverless-http');
 const { supabase } = require('../lib/supabase');
 
 const app = express();
@@ -177,4 +176,4 @@ app.post('/api/cafes/batch', async (req, res) => {
   }
 });
 
-module.exports = serverless(app);
+module.exports = app;
