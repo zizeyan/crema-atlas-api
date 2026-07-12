@@ -1,0 +1,22 @@
+{
+  "name": "crema-atlas-api",
+  "version": "3.0.0",
+  "private": true,
+  "description": "杯中山海 · CREMA ATLAS — 咖啡馆数据 API + 静态前端",
+  "scripts": {
+    "dev": "vercel dev",
+    "deploy": "vercel --prod"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.0",
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "serverless-http": "^3.2.0"
+  },
+  "devDependencies": {
+    "vercel": "^34.0.0"
+  },
+  "engines": {
+    "node": ">=18.x"
+  }
+}
