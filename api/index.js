@@ -2,19 +2,14 @@ const express = require('express');
 const cors = require('cors');
 const { supabase } = require('../lib/supabase');
 
-const aiReco = require('./ai-reco');
-
 const app = express();
 
 app.use(cors({
   origin: '*',
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'HTTP-Referer', 'X-Title']
+  allowedHeaders: ['Content-Type', 'Authorization']
 }));
 app.use(express.json());
-
-// OpenRouter 代理：为 AI 推荐小卡片提供同域后端
-app.post('/api/chat/completions', aiReco);
 
 function envelope(code = 0, msg = 'ok', data = null) {
   return { code, msg, data };
