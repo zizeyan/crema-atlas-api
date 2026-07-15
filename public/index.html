@@ -2702,5 +2702,631 @@ function boot(){
 U.$('#csStars').textContent='★★★★★';
 boot();
 </script>
+<!-- ================================================================
+     v2.5 荐杯司 · 智能推荐（AI RECO — 纯增量模块 / ADD-ONLY）
+     ----------------------------------------------------------------
+     · 不改动上方任何既有样式与脚本；仅在此追加一段 <style> 与一段 <script>。
+     · 「探」章右下角与手帖详情内出现同一枚悬浮按钮「智能推荐」；
+       点击唤出延迟跟随指针的液态玻璃荐签（产品推荐 + 生图位）。
+     · 当前文案/示意图为本地演绎占位；真实内容规划接入 OpenRouter
+       （文案 hunyuan free · 配图 nano-banana free）。
+     · 接入方式：注入 window.AI_RECO_ADAPTER 即自动切换云端，零改本文件。
+       契约、提示词、参考适配器全文见 docs/AI-RECO.md。
+================================================================ -->
+<style id="aiRecoStyle">
+/* ---------- 荐杯司 · 按钮 ---------- */
+#aiBtn{position:fixed;right:clamp(16px,2.4vw,38px);bottom:var(--aiB,26px);z-index:124;
+  opacity:0;transform:translateY(38px) scale(.72);pointer-events:none;user-select:none;-webkit-user-select:none;
+  -webkit-tap-highlight-color:transparent;
+  transition:opacity .4s ease,transform .62s cubic-bezier(.2,1.55,.3,1),bottom .38s ease}
+#aiBtn.show{opacity:1;transform:none;pointer-events:auto}
+.aiFloat{animation:aiBob 4.4s ease-in-out infinite;will-change:transform}
+.aiCore{position:relative;display:flex;align-items:center;gap:11px;padding:11px 19px 11px 15px;border-radius:32px;
+  background:linear-gradient(150deg,rgba(255,242,228,.12),rgba(255,242,228,.03));
+  backdrop-filter:blur(16px) saturate(1.6);-webkit-backdrop-filter:blur(16px) saturate(1.6);
+  border:1px solid rgba(255,236,220,.16);
+  animation:aiNeon 3.4s ease-in-out infinite;transition:background .3s}
+.aiCore:hover{background:linear-gradient(150deg,rgba(255,242,228,.2),rgba(255,242,228,.055))}
+#aiBtn.on .aiCore{background:linear-gradient(150deg,rgba(255,159,190,.17),rgba(255,242,228,.04))}
+/* 旋转霓虹描边（遮罩圆环 + 超采样转盘） */
+.aiEdge,.aiEdge2{position:absolute;inset:-1.5px;border-radius:34px;padding:1.5px;pointer-events:none;overflow:hidden;opacity:.95;
+  -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;
+  mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);mask-composite:exclude;
+  animation:aiFlick 4.8s steps(1) infinite}
+.aiEdge::before,.aiEdge2::before{content:"";position:absolute;left:50%;top:50%;width:430%;height:0;padding-top:430%;
+  margin-left:-215%;margin-top:-215%;border-radius:50%;
+  background:conic-gradient(var(--pink),var(--gold) 26%,var(--mint) 52%,var(--lav) 76%,var(--pink));
+  animation:aiSpin 5.6s linear infinite;filter:saturate(1.15)}
+#aiBtn.on .aiEdge{opacity:1}
+#aiBtn.on .aiEdge::before{animation-duration:2.6s}
+.aiIco{width:25px;height:25px;flex:0 0 auto;color:var(--goldhi);filter:drop-shadow(0 0 6px rgba(246,199,126,.55))}
+.aiIco .st{color:var(--pinkhi);animation:aiSteam 2.8s ease-in-out infinite}
+.aiIco .st2{animation-delay:1.4s}
+.aiTxt{display:flex;flex-direction:column;align-items:flex-start}
+.aiLbl{font-family:var(--fxw);font-size:15.5px;letter-spacing:.22em;line-height:1;color:var(--cream);
+  text-shadow:0 0 14px rgba(255,203,218,.35);white-space:nowrap}
+.aiSub{font-family:var(--fen);font-style:italic;font-size:8.5px;letter-spacing:.32em;color:var(--minthi);
+  opacity:.85;margin-top:4px;white-space:nowrap}
+.aiDot{width:6px;height:6px;border-radius:50%;background:var(--mint);box-shadow:0 0 10px var(--mint);
+  animation:aiPulse 1.7s ease-in-out infinite;flex:0 0 auto;margin-left:2px}
+#aiBtn.on .aiDot{background:var(--pink);box-shadow:0 0 12px var(--pink)}
+.aiSpk{position:absolute;font-size:11px;line-height:1;color:var(--goldhi);text-shadow:0 0 9px var(--gold);
+  pointer-events:none;animation:aiTwk 2.7s ease-in-out infinite;z-index:2}
+.aiSpk.s1{left:-7px;top:-9px;animation-delay:.2s}
+.aiSpk.s2{right:-4px;top:-13px;font-size:9px;color:var(--pinkhi);text-shadow:0 0 9px var(--pink);animation-delay:1.3s}
+.aiSpk.s3{left:16px;bottom:-11px;font-size:8px;color:var(--minthi);text-shadow:0 0 9px var(--mint);animation-delay:2.1s}
+
+/* ---------- 荐杯司 · 跟随荐签 ---------- */
+#aiPanel{position:fixed;left:0;top:0;z-index:126;width:min(318px,82vw);pointer-events:none;user-select:none;-webkit-user-select:none;
+  opacity:0;filter:blur(9px);visibility:hidden;transform-origin:16% 0%;will-change:transform;
+  transition:opacity .32s ease,filter .34s ease,visibility 0s linear .36s}
+#aiPanel.on{opacity:1;filter:blur(0);visibility:visible;transition:opacity .3s ease,filter .38s ease,visibility 0s}
+.aiEdge2{border-radius:23px;inset:-1.6px;padding:1.6px;opacity:.9;animation-duration:6.6s;animation-delay:.8s}
+.aiEdge2::before{animation-duration:7.4s}
+.aiPane{position:relative;border-radius:21px;padding:15px 15px 12px;
+  background:linear-gradient(162deg,rgba(45,21,34,.78),rgba(21,9,17,.66));
+  backdrop-filter:blur(20px) saturate(1.55);-webkit-backdrop-filter:blur(20px) saturate(1.55);
+  border:1px solid rgba(255,236,220,.13);
+  box-shadow:0 26px 74px rgba(8,2,8,.66),inset 0 1px 0 rgba(255,255,255,.13);overflow:hidden}
+.aiPane::before{content:"";position:absolute;left:-30%;top:-56%;width:160%;height:90%;pointer-events:none;
+  background:radial-gradient(closest-side,rgba(255,236,220,.13),transparent 70%)}
+.aiCn::before,.aiCn::after{content:"";position:absolute;width:12px;height:12px;pointer-events:none;opacity:.9;z-index:3}
+.aiCn::before{left:9px;top:9px;border-left:1.5px solid var(--goldhi);border-top:1.5px solid var(--goldhi)}
+.aiCn::after{right:9px;bottom:9px;border-right:1.5px solid var(--pink);border-bottom:1.5px solid var(--pink)}
+.aiScan{position:absolute;left:-4%;right:-4%;height:22%;top:-30%;pointer-events:none;z-index:2;
+  background:linear-gradient(180deg,transparent,rgba(255,240,225,.1),transparent);mix-blend-mode:screen;
+  animation:aiScanKf 4.6s ease-in-out infinite}
+.aiRow{position:relative;opacity:0}
+.aiRow.pop{animation:aiRise .55s cubic-bezier(.2,1.15,.3,1) both;animation-delay:calc(var(--k)*55ms)}
+.aiKick{display:flex;justify-content:space-between;align-items:baseline;font-family:var(--fxw);
+  font-size:10.5px;letter-spacing:.3em;color:var(--goldhi)}
+.aiKick b{font-weight:400}
+.aiKick span{font-family:var(--fen);font-style:italic;font-size:9px;letter-spacing:.3em;color:var(--minthi)}
+.aiFor{margin:7px 0 10px;font-family:var(--fsans);font-weight:300;font-size:11px;letter-spacing:.12em;color:var(--pinkhi)}
+.aiFig{position:relative;aspect-ratio:4/3;border-radius:13px;overflow:hidden;background:#1c0d16;
+  border:1px solid rgba(255,236,220,.14)}
+.aiFig canvas,.aiFig img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
+.aiFig img{opacity:0;transition:opacity .8s ease;z-index:1}
+.aiFig img.show{opacity:1}
+.aiChip{position:absolute;left:10px;top:10px;z-index:4;font-family:var(--fxw);font-size:10px;letter-spacing:.18em;
+  color:var(--bg0);background:var(--holo);padding:4px 11px;border-radius:11px;box-shadow:0 3px 12px rgba(255,159,190,.4)}
+.aiFk::before,.aiFk::after{content:"";position:absolute;width:13px;height:13px;z-index:3;opacity:.85;pointer-events:none}
+.aiFk::before{right:8px;top:8px;border-right:1.5px solid rgba(255,236,220,.8);border-top:1.5px solid rgba(255,236,220,.8)}
+.aiFk::after{left:8px;bottom:28px;border-left:1.5px solid rgba(255,236,220,.8);border-bottom:1.5px solid rgba(255,236,220,.8)}
+.aiCap{position:absolute;left:0;right:0;bottom:0;z-index:3;display:flex;justify-content:space-between;align-items:center;
+  padding:4px 10px;font-family:var(--forb);font-size:8px;letter-spacing:.26em;color:rgba(255,240,225,.82);
+  background:linear-gradient(transparent,rgba(16,6,12,.78))}
+.aiSweep{position:absolute;inset:0;z-index:2;pointer-events:none;mix-blend-mode:screen;
+  background:linear-gradient(115deg,transparent 42%,rgba(255,244,230,.16) 50%,transparent 58%);
+  background-size:240% 100%;animation:aiSweepKf 4.2s ease-in-out infinite}
+.aiName{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-top:12px}
+.aiName b{font-family:var(--fxw);font-weight:400;font-size:21px;letter-spacing:.1em;line-height:1.25;color:var(--cream);
+  text-shadow:0 0 16px rgba(255,203,218,.25)}
+.aiPrice{font-family:var(--forb);font-size:14px;letter-spacing:.08em;color:var(--goldhi);
+  text-shadow:0 0 12px rgba(246,199,126,.55);white-space:nowrap}
+.aiEn{margin-top:3px;font-family:var(--fen);font-style:italic;font-size:11.5px;letter-spacing:.24em;color:var(--minthi)}
+.aiTagl{margin-top:8px;font-family:var(--fxw);font-size:12.5px;letter-spacing:.14em;color:var(--pinkhi)}
+.aiDesc{margin-top:8px;font-family:var(--fsans);font-weight:300;font-size:12.2px;line-height:1.86;
+  letter-spacing:.02em;color:var(--ivory);opacity:.92}
+.aiTags{display:flex;flex-wrap:wrap;gap:6px;margin-top:11px}
+.aiTags .tag{font-size:10.5px;padding:3px 10px;border-radius:12px}
+.aiMeta{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center;margin-top:11px;
+  font-family:var(--fxw);font-size:10px;letter-spacing:.2em;color:rgba(255,203,218,.92)}
+.aiMeta .aiSep{width:4px;height:4px;transform:rotate(45deg);background:var(--gold);opacity:.75}
+.aiFoot{display:flex;justify-content:space-between;align-items:center;margin-top:12px;padding-top:9px;
+  border-top:1px dashed rgba(255,236,220,.18);font-family:var(--fen);font-style:italic;font-size:9px;
+  letter-spacing:.26em;color:rgba(255,233,208,.62)}
+#aiEng{color:var(--minthi)}
+.aiBrew{position:absolute;inset:0;z-index:5;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:12px;background:rgba(23,10,18,.5);backdrop-filter:blur(5px);-webkit-backdrop-filter:blur(5px);
+  opacity:0;pointer-events:none;transition:opacity .28s}
+.aiBrew.on{opacity:1}
+.aiSpinIco{width:30px;height:30px;border-radius:50%;
+  background:conic-gradient(var(--pink),var(--gold),var(--mint),transparent 78%);
+  -webkit-mask:radial-gradient(farthest-side,transparent 62%,#000 64%);
+  mask:radial-gradient(farthest-side,transparent 62%,#000 64%);
+  animation:aiSpin 1s linear infinite}
+#aiBrewTx{font-family:var(--fxw);font-size:11px;letter-spacing:.32em;color:var(--ivory)}
+
+@keyframes aiBob{0%,100%{transform:translateY(0) rotate(0)}50%{transform:translateY(-6px) rotate(.6deg)}}
+@keyframes aiSpin{to{transform:rotate(1turn)}}
+@keyframes aiFlick{0%,86%,90%,94%,100%{opacity:1}88%{opacity:.5}92%{opacity:.72}}
+@keyframes aiNeon{0%,100%{box-shadow:0 12px 36px rgba(10,3,10,.52),0 0 18px rgba(255,159,190,.26),inset 0 1px 0 rgba(255,255,255,.18)}
+  50%{box-shadow:0 12px 36px rgba(10,3,10,.52),0 0 26px rgba(143,231,192,.3),inset 0 1px 0 rgba(255,255,255,.18)}}
+@keyframes aiPulse{0%,100%{opacity:.5;transform:scale(.8)}50%{opacity:1;transform:scale(1.25)}}
+@keyframes aiTwk{0%,100%{opacity:0;transform:scale(.4) rotate(0)}50%{opacity:1;transform:scale(1.15) rotate(90deg)}}
+@keyframes aiScanKf{0%,55%{top:-30%;opacity:0}60%{opacity:1}100%{top:120%;opacity:0}}
+@keyframes aiSweepKf{0%{background-position:130% 0}60%,100%{background-position:-130% 0}}
+@keyframes aiRise{0%{opacity:0;transform:translateY(13px);filter:blur(3px)}100%{opacity:1;transform:none;filter:none}}
+
+@media (max-width:640px){
+  #aiBtn{right:12px}
+  .aiCore{padding:10px 15px 10px 12px;gap:9px}
+  .aiLbl{font-size:14px}
+  #aiPanel{width:min(298px,86vw)}
+}
+@media (prefers-reduced-motion:reduce){
+  .aiFloat,.aiCore,.aiSpk,.aiScan,.aiSweep,.aiDot,.aiIco .st,.aiIco .st2,
+  .aiEdge,.aiEdge2,.aiEdge::before,.aiEdge2::before{animation:none!important}
+  .aiRow.pop{animation:none!important;opacity:1}
+  .aiSpk{opacity:.5}
+}
+</style>
+<script id="aiRecoApp">
+/* ================================================================
+   v2.5 荐杯司 · 智能推荐（AI RECO）— 纯增量脚本
+   仅读取主站全局（S / U / CAFES / Ring / Scroll / TextFX / FX / TONES），
+   不改写任何既有对象；出错自动熔断，不影响主站。
+   OpenRouter 接入契约与参考适配器：docs/AI-RECO.md
+================================================================ */
+(()=>{ 'use strict';
+try{
+if (typeof U==='undefined'||typeof S==='undefined'||typeof Ring==='undefined'||typeof Scroll==='undefined'||!document.body) return;
+
+const RM=!!S.reduced, TOUCH=!!S.touch;
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+const clampN=(v,a,b)=>v<a?a:v>b?b:v;
+
+/*__AIRECO_PURE_START__*/
+/* ---------- 种子随机（mulberry32）---------- */
+function aiMul(a){ return function(){ a|=0; a=a+0x6D2B79F5|0; let t=Math.imul(a^a>>>15,1|a); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
+function aiHash(s){ s=String(s||''); let h=2166136261; for(let i=0;i<s.length;i++){ h^=s.charCodeAt(i); h=Math.imul(h,16777619); } return h>>>0; }
+
+/* ---------- 模型标识（测试期免费档；以 openrouter.ai/models 实际 slug 为准）---------- */
+const AI_MODELS={ text:'tencent/hy3:free', image:'google/gemini-2.5-flash-image-preview:free' };
+
+/* ---------- 提示词 · 单一事实源（docs/AI-RECO.md 与云端适配器直接调用这里）---------- */
+function buildTextPrompt(c){
+  const system='你是「杯中山海 · CREMA ATLAS」的驻站荐杯师。你的唯一输出是一个严格合法的 JSON 对象本体：不要 markdown、不要代码围栏、不要注释、不要任何 JSON 之外的文字。';
+  const user=[
+    '【任务】为下面这家上海咖啡店即兴设计一款「本店限定」推荐饮品，并按字段要求输出 JSON。',
+    '【店铺档案】',
+    '- 店名：'+(c.name||c.short||'')+'（'+(c.en||'')+'）',
+    '- 商圈：'+(c.business_area||'')+' · '+(c.cityname||'上海'),
+    '- 评分：'+(c.rating!=null?Number(c.rating).toFixed(1):'—')+' / 5.0；人均：¥'+(c.cost!=null?c.cost:'—'),
+    '- 标签：'+(((c.tags||[]).join(' / '))||'—'),
+    '- 招牌气质：'+(((c.feel||[]).join(' / '))||'—'),
+    '- 一句店志：'+(c.note||'—'),
+    '【口吻】简体中文；「沪上精品咖啡手帖」式的克制浪漫；可呼应店铺气质与商圈，但不得编造真实在售菜单、不得使用表情符号、不得夸大宣传。',
+    '【输出 JSON 字段】',
+    'product_name：中文饮品名，不超过 7 个字；',
+    'en_name：英文名，不超过 4 个单词；',
+    'tagline：一句荐语，不超过 16 字；',
+    'description：两句描述，共不超过 70 字；',
+    'flavor_tags：3 个风味标签组成的数组，每个不超过 6 字；',
+    'pairing：建议佐点，不超过 10 字；',
+    'best_time：建议时段，不超过 8 字；',
+    'serve：冰或热 + 一句出杯描述，不超过 12 字；',
+    'price_estimate：形如 "¥38"，需为贴近该店人均的合理单杯价；',
+    'image_prompt：给生图模型的英文提示词（一句话，描述这杯饮品的外观、杯型、光线与氛围）。',
+    '再次强调：只输出 JSON 对象本体。'
+  ].join('\n');
+  return {system:system,user:user};
+}
+function buildImagePrompt(c,p){
+  p=p||{};
+  const drink=p.en_name||p.product_name||'signature specialty coffee';
+  return 'Editorial product photograph of "'+drink+'", a specialty coffee drink, elegant glass or ceramic cup with delicate latte art and creamy microfoam, dark cocoa-plum studio backdrop, soft neon rim light in strawberry pink and caramel gold with a faint mint glow, gentle steam, shallow depth of field, appetizing, ultra detailed, clean composition, no text, no watermark, no people.';
+}
+
+/* ---------- 本地演绎（与云端返回同构；接入 OpenRouter 前的占位内容）---------- */
+function composeLocal(c,seed){
+  const r=aiMul((seed>>>0)||1);
+  const pk=arr=>arr[(r()*arr.length)|0];
+  const s=((c&&c.feel)||[]).concat((c&&c.tags)||[]).join('/');
+  const T={deep:/深烘|意式/.test(s),pour:/手冲/.test(s),lab:/特调|实验/.test(s),cat:/猫/.test(s),
+           river:/江|外摆/.test(s),view:/风景|落地窗|天际/.test(s),roast:/烘焙|铜罐|剧场/.test(s)};
+  let pre=pk(['琥珀云朵','山茶奶霜','雾屿','莓果星尘','杏仁月光','黑糖流沙','桂影微光']);
+  let base=pk(['澳白','燕麦拿铁','Dirty','可可摩卡']);
+  let iced=r()<.34;
+  if(T.cat){pre='云爪';base='奶沫拿铁';}
+  else if(T.river){pre='江风';base='冷萃';iced=true;}
+  else if(T.view){pre='天际线';base='Dirty';}
+  else if(T.roast){pre='铜罐直火';base=pk(['摩卡','澳白']);}
+  else if(T.pour){pre='雾屿';base='手冲单品';}
+  else if(T.lab){pre=pk(['桂花海盐','气泡莓果']);base='特调';iced=r()<.6;}
+  else if(T.deep){pre=pk(['黑糖','焦糖琥珀']);base=pk(['Dirty','拿铁']);}
+  const name=(pre+base).slice(0,7);
+  const en=pk(['Amber','Velvet','Misty','Osmanthus','Caramel','Almond','Riverside','Skyline'])+' '+
+           pk(['Cloud Latte','Flat White','Dirty','Cold Brew','Pour-Over','Mocha']);
+  const feel0=((c&&c.feel)||[])[0]||'本店气质';
+  const area=(c&&c.business_area)||'街角';
+  const short=(c&&c.short)||'这家店';
+  const desc=pk([
+    '以'+short+'的「'+feel0+'」为骨，奶沫在杯口停成一枚月相。'+pk(['第一口先甜后醇，尾韵落在','入口是绸面的，余味停在'])+pk(['焦糖','黑糖','坚果','可可'])+'上。',
+    '豆香先行，'+pk(['甜感','酸质'])+'随后半拍抵达，很衬'+area+'的'+pk(['午后','清晨','黄昏'])+'。适合坐窗边，让'+pk(['光斑','风','街声'])+'替你搅拌。',
+    '一杯为'+short+'定制的小心思：'+pk(['海盐收住甜','气泡挑亮酸','奶油压稳苦'])+'，像把店里的空气折进了杯子。'
+  ]);
+  const tagPool=['奶感圆润','焦糖尾韵','坚果香','花香上扬','柑橘微酸','黑糖回甘','海盐平衡','可可厚度','清冽甘甜'];
+  const tags=[]; while(tags.length<3){ const t=pk(tagPool); if(tags.indexOf(t)<0) tags.push(t); }
+  const cost=Number((c&&c.cost)||45)||45;
+  const price=clampN(Math.round(cost*(0.55+r()*0.28)),18,68);
+  return {
+    product_name:name,
+    en_name:en,
+    tagline:pk(['把'+area+'折进一杯里','给下午一个停顿','先于言语抵达的那一口','这杯替你记住此店']),
+    description:desc,
+    flavor_tags:tags,
+    pairing:'佐 '+pk(['巴斯克半熟芝士','可露丽','黄油司康','开心果泡芙','提拉米苏小方']),
+    best_time:pk(['清晨首炉','午后三点','日落前半小时','雨天窗边']),
+    serve:iced?'冰 · 大冰慢融':'热 · 62°C 出杯',
+    price_estimate:'¥'+price,
+    image_prompt:''
+  };
+}
+
+/* ---------- 云端返回解析（剥围栏 → 取首个 JSON → 校验裁剪）---------- */
+function parseProduct(raw){
+  let t=String(raw==null?'':raw).trim().replace(/```[a-zA-Z]*\n?|```/g,'');
+  const a=t.indexOf('{'), b=t.lastIndexOf('}');
+  if(a<0||b<=a) throw new Error('AIReco: 响应中未找到 JSON');
+  const o=JSON.parse(t.slice(a,b+1));
+  const st=(v,d,mx)=>{ v=(v==null?d:String(v)).trim(); return v.length>mx?v.slice(0,mx):v; };
+  return {
+    product_name:st(o.product_name,'招待未命名',10),
+    en_name:st(o.en_name,'HOUSE SPECIAL',40),
+    tagline:st(o.tagline,'',22),
+    description:st(o.description,'',96),
+    flavor_tags:(Array.isArray(o.flavor_tags)?o.flavor_tags:[]).slice(0,4).map(x=>st(x,'',8)).filter(Boolean),
+    pairing:st(o.pairing,'',14),
+    best_time:st(o.best_time,'',10),
+    serve:st(o.serve,'',14),
+    price_estimate:st(o.price_estimate,'',8),
+    image_prompt:st(o.image_prompt,'',500)
+  };
+}
+/*__AIRECO_PURE_END__*/
+
+/* ---------- 程序化示意图：拉花杯（生图接入前的占位影像）---------- */
+function hexA(hex,a){ hex=String(hex||'#FF9FBE').replace('#','');
+  if(hex.length===3) hex=hex.split('').map(ch=>ch+ch).join('');
+  const n=parseInt(hex,16)||0;
+  return 'rgba('+((n>>16)&255)+','+((n>>8)&255)+','+(n&255)+','+a+')'; }
+function drawCupArt(cv,seed,tone){
+  const x=cv.getContext&&cv.getContext('2d'); if(!x) return;
+  const W=cv.width,H=cv.height,r=aiMul((seed>>>0)||7);
+  const bg=x.createLinearGradient(0,0,0,H); bg.addColorStop(0,'#1b0c15'); bg.addColorStop(1,'#241021');
+  x.fillStyle=bg; x.fillRect(0,0,W,H);
+  const glow=x.createRadialGradient(W*.78,H*.2,10,W*.78,H*.2,W*.6);
+  glow.addColorStop(0,hexA(tone,.22)); glow.addColorStop(1,'rgba(0,0,0,0)');
+  x.fillStyle=glow; x.fillRect(0,0,W,H);
+  const cx=W*.5, cy=H*.55, R=Math.min(W,H)*.34;
+  x.strokeStyle='rgba(255,236,220,.16)'; x.lineWidth=2;
+  x.beginPath(); x.ellipse(cx,cy+R*.72,R*1.5,R*.44,0,0,6.3); x.stroke();
+  x.strokeStyle='rgba(255,236,220,.08)';
+  x.beginPath(); x.ellipse(cx,cy+R*.78,R*1.72,R*.52,0,0,6.3); x.stroke();
+  const cg=x.createRadialGradient(cx-R*.3,cy-R*.34,R*.1,cx,cy,R);
+  cg.addColorStop(0,'#E2AE7F'); cg.addColorStop(.62,'#C08055'); cg.addColorStop(1,'#7d4a33');
+  x.fillStyle=cg; x.beginPath(); x.arc(cx,cy,R,0,6.3); x.fill();
+  x.lineWidth=3; x.strokeStyle='rgba(255,243,226,.6)'; x.stroke();
+  x.lineWidth=8; x.strokeStyle='rgba(20,8,14,.35)';
+  x.beginPath(); x.arc(cx,cy,R+7,0,6.3); x.stroke();
+  x.save(); x.beginPath(); x.arc(cx,cy,R-3,0,6.3); x.clip();
+  x.strokeStyle='rgba(88,44,28,.4)';
+  for(let k=0;k<6;k++){ x.lineWidth=1.5+r()*2.5; x.beginPath();
+    let px0=cx+(r()-.5)*R*1.6, py0=cy+(r()-.5)*R*1.6; x.moveTo(px0,py0);
+    for(let q=0;q<4;q++){ px0+=(r()-.5)*R; py0+=(r()-.5)*R*.8;
+      x.quadraticCurveTo(cx+(r()-.5)*R,cy+(r()-.5)*R,px0,py0); }
+    x.stroke(); }
+  x.strokeStyle='rgba(255,243,226,.9)'; x.lineCap='round';
+  const top=cy-R*.66, bot=cy+R*.72, leaves=9+((r()*4)|0);
+  x.lineWidth=3; x.beginPath(); x.moveTo(cx,bot);
+  x.quadraticCurveTo(cx+(r()-.5)*22,cy,cx,top+14); x.stroke();
+  for(let i=0;i<leaves;i++){
+    const t=i/(leaves-1), y=bot-(bot-top)*t*.92, w=(1-t)*R*.62+6, lift=12+(1-t)*20;
+    x.lineWidth=2.4-t*1.1; x.globalAlpha=.9-t*.35;
+    x.beginPath(); x.moveTo(cx,y); x.quadraticCurveTo(cx-w*.7,y-lift*.4,cx-w,y-lift); x.stroke();
+    x.beginPath(); x.moveTo(cx,y); x.quadraticCurveTo(cx+w*.7,y-lift*.4,cx+w,y-lift); x.stroke();
+  }
+  x.globalAlpha=1;
+  x.fillStyle='rgba(255,243,226,.92)';
+  x.beginPath(); x.arc(cx-6,top+6,7,0,6.3); x.arc(cx+6,top+6,7,0,6.3); x.fill();
+  x.beginPath(); x.moveTo(cx-12,top+8); x.quadraticCurveTo(cx,top+26,cx+12,top+8); x.fill();
+  const cols=['rgba(255,159,190,.8)','rgba(246,199,126,.85)','rgba(143,231,192,.7)'];
+  for(let k=0;k<20;k++){ const a=r()*6.3, rr=r()*R*.92;
+    x.save(); x.translate(cx+Math.cos(a)*rr,cy+Math.sin(a)*rr); x.rotate(r()*3);
+    x.fillStyle=cols[k%3]; x.fillRect(-3.4,-1.1,6.8,2.2); x.restore(); }
+  const hl=x.createRadialGradient(cx-R*.42,cy-R*.48,4,cx-R*.42,cy-R*.48,R*.7);
+  hl.addColorStop(0,'rgba(255,255,255,.3)'); hl.addColorStop(1,'rgba(255,255,255,0)');
+  x.fillStyle=hl; x.beginPath(); x.arc(cx,cy,R-2,0,6.3); x.fill();
+  x.restore();
+  x.strokeStyle='rgba(255,236,220,.22)'; x.lineWidth=3; x.lineCap='round';
+  for(let k=0;k<2;k++){ const sx=cx+(k?26:-20)+(r()-.5)*10, sy=cy-R-16;
+    x.beginPath(); x.moveTo(sx,sy);
+    x.bezierCurveTo(sx-14,sy-26,sx+16,sy-44,sx+2,sy-70); x.stroke(); }
+  const vg=x.createRadialGradient(cx,cy,R*.4,W*.5,H*.5,W*.72);
+  vg.addColorStop(0,'rgba(0,0,0,0)'); vg.addColorStop(1,'rgba(10,3,9,.5)');
+  x.fillStyle=vg; x.fillRect(0,0,W,H);
+}
+
+/* ---------- DOM 组装（body 末尾追加，两件套：按钮 + 荐签）---------- */
+const dtEl=document.getElementById('detail');
+const dtIdxEl=document.getElementById('dtIdx');
+const consoleEl=document.getElementById('console');
+
+const btn=document.createElement('div');
+btn.id='aiBtn'; btn.setAttribute('aria-hidden','true');
+btn.innerHTML=
+ '<span class="aiSpk s1">✦</span><span class="aiSpk s2">✧</span><span class="aiSpk s3">✦</span>'+
+ '<div class="aiFloat"><button type="button" class="aiCore mag" id="aiCore" data-cursor="荐" aria-pressed="false" aria-label="智能推荐">'+
+   '<span class="aiEdge"></span>'+
+   '<svg class="aiIco" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true">'+
+     '<path d="M5 9.4h10.6v4.2a4.6 4.6 0 0 1-4.6 4.6H9.6A4.6 4.6 0 0 1 5 13.6z"/>'+
+     '<path d="M15.6 10.4h1.5a2.35 2.35 0 0 1 0 4.7h-1.7"/>'+
+     '<path d="M4.2 20.8h13.2"/>'+
+     '<path class="st" d="M8.9 3.4c-.9 1 .9 1.9 0 3.1"/>'+
+     '<path class="st st2" d="M12.4 2.7c-.9 1 .9 1.9 0 3.1"/>'+
+   '</svg>'+
+   '<span class="aiTxt"><span class="aiLbl" id="aiLbl">智能推荐</span><span class="aiSub" id="aiSub">NEURAL BARISTA · AI</span></span>'+
+   '<span class="aiDot"></span>'+
+ '</button></div>';
+document.body.appendChild(btn);
+
+const panel=document.createElement('div');
+panel.id='aiPanel'; panel.setAttribute('aria-hidden','true'); panel.setAttribute('role','status');
+panel.innerHTML=
+ '<div class="aiEdge2"></div>'+
+ '<div class="aiPane"><i class="aiCn"></i><div class="aiScan"></div>'+
+   '<div class="aiRow aiKick" style="--k:0"><b>✦ 产品推荐</b><span>AI PICK · LIVE</span></div>'+
+   '<div class="aiRow aiFor" style="--k:1" id="aiFor">为「—」特调</div>'+
+   '<div class="aiRow aiFig" style="--k:2"><canvas id="aiArt" width="640" height="480"></canvas><img id="aiImg" alt="AI 生成产品图">'+
+     '<span class="aiChip" id="aiChip">示意 · 生图接入位</span><i class="aiFk"></i>'+
+     '<div class="aiCap"><span id="aiCapL">AI · 92°C · f/2.8</span><span>CREMA ATLAS</span></div><div class="aiSweep"></div></div>'+
+   '<div class="aiRow aiName" style="--k:3"><b id="aiName">—</b><span class="aiPrice" id="aiPrice"></span></div>'+
+   '<div class="aiRow aiEn" style="--k:4" id="aiEn"></div>'+
+   '<div class="aiRow aiTagl" style="--k:5" id="aiTagl"></div>'+
+   '<div class="aiRow aiDesc" style="--k:6" id="aiDesc"></div>'+
+   '<div class="aiRow aiTags" style="--k:7" id="aiTags"></div>'+
+   '<div class="aiRow aiMeta" style="--k:8" id="aiMeta"></div>'+
+   '<div class="aiRow aiFoot" style="--k:9"><span>ENGINE</span><span id="aiEng">本地演绎 · 待接 OpenRouter</span></div>'+
+   '<div class="aiBrew" id="aiBrew"><i class="aiSpinIco"></i><span id="aiBrewTx">研读店志…</span></div>'+
+ '</div>';
+document.body.appendChild(panel);
+
+const $g=id=>document.getElementById(id);
+const core=$g('aiCore'), lblEl=$g('aiLbl'), subEl=$g('aiSub');
+const forEl=$g('aiFor'), nameEl=$g('aiName'), priceEl=$g('aiPrice'), enEl=$g('aiEn'), taglEl=$g('aiTagl'),
+      descEl=$g('aiDesc'), tagsEl=$g('aiTags'), metaEl=$g('aiMeta'), engEl=$g('aiEng'),
+      chipEl=$g('aiChip'), capL=$g('aiCapL'), artCv=$g('aiArt'), imgEl=$g('aiImg'),
+      brewEl=$g('aiBrew'), brewTx=$g('aiBrewTx');
+
+if(typeof TextFX!=='undefined'&&TextFX.laserize){ try{ TextFX.laserize(lblEl); }catch(e){} }
+if(typeof magnetize==='function'){ try{ magnetize(); }catch(e){} }
+
+function setLaser(el,txt){
+  el.textContent=txt;
+  try{ delete el.dataset.split;
+    el.querySelectorAll('.scanline').forEach(n=>n.remove());
+    if(typeof TextFX!=='undefined'&&TextFX.laserize){ TextFX.laserize(el); TextFX.zap(el); } }catch(e){}
+}
+function zap(el){ try{ if(typeof TextFX!=='undefined'&&TextFX.zap) TextFX.zap(el); }catch(e){} }
+function burstAt(x,y,n,kind,sp){ try{ if(!RM&&typeof FX!=='undefined'&&FX.burst) FX.burst(x,y,n,kind||null,sp||3); }catch(e){} }
+
+/* ---------- 状态 ---------- */
+const BREW=['研读店志…','斟酌豆单…','校准甜度…','拉花排版…','封蜡出杯…'];
+let open=false, openK=0, shown=false, curKey='∅', openCount=0, lastAutoZap=0, lastProd=null;
+let fx=S.w*.62, fy=S.h*.5, brewTimer=0, brewTick=0, seq=0, errs=0;
+const cache=new Map(); let aborter=null;
+
+function chapterAct(){
+  const t=Scroll.tops||[]; let act=0;
+  for(let i=0;i<t.length;i++){ if(t[i]-S.scroll<S.h*.5) act=i; }
+  return act;
+}
+function detailOpen(){ return !!(dtEl&&dtEl.classList.contains('open')); }
+function detailIndex(){
+  const m=String((dtIdxEl&&dtIdxEl.textContent)||'').match(/NO\.?\s*0*(\d+)/i);
+  if(!m) return -1;
+  const i=parseInt(m[1],10)-1;
+  return (typeof CAFES!=='undefined'&&CAFES[i])?i:-1;
+}
+function currentCafe(){
+  if(detailOpen()){ const i=detailIndex(); return {c:i>=0?CAFES[i]:null,i:i,mode:'dt'}; }
+  const k=Ring.focusK, list=Ring.list||[];
+  const ci=(k!=null&&k>=0)?list[k]:-1;
+  const c=(typeof CAFES!=='undefined'&&ci!=null&&ci>=0&&CAFES[ci])?CAFES[ci]:null;
+  return {c:c,i:ci,mode:'ring'};
+}
+function keyOf(cur){ return (cur&&cur.c)?(cur.mode+':'+(cur.c.id!=null?cur.c.id:cur.i)):(cur?cur.mode+':none':'∅'); }
+
+/* 「探」章底部若与选择台横向相撞，按钮自动升至选择台上缘 */
+function place(dt){
+  let b=26;
+  if(!dt&&consoleEl){
+    const r=consoleEl.getBoundingClientRect();
+    const bw=btn.offsetWidth||190;
+    const rightPad=parseFloat(getComputedStyle(btn).right)||24;
+    if(r.width>0&&r.top<S.h&&r.bottom>0&&r.right>S.w-rightPad-bw-8){
+      b=clampN(S.h-r.top+14,26,S.h-90);
+    }
+  }
+  btn.style.setProperty('--aiB',Math.round(b)+'px');
+}
+
+/* ---------- 出杯流水线：防抖 → 缓存 → 云端(若有适配器) → 本地演绎 ---------- */
+function setBrewing(v){
+  if(v){ brewEl.classList.add('on');
+    clearInterval(brewTick); let bi=0; brewTx.textContent=BREW[0];
+    brewTick=setInterval(()=>{ bi=(bi+1)%BREW.length; brewTx.textContent=BREW[bi]; },640);
+  } else { brewEl.classList.remove('on'); clearInterval(brewTick); }
+}
+function withTimeout(p,ms){
+  return new Promise((res,rej)=>{ let done=false;
+    const t=setTimeout(()=>{ if(!done){ done=true; rej(new Error('AIReco: 请求超时')); } },ms);
+    Promise.resolve(p).then(v=>{ if(!done){ done=true; clearTimeout(t); res(v); } },
+                            e=>{ if(!done){ done=true; clearTimeout(t); rej(e); } });
+  });
+}
+function scheduleBrew(cur,delay){
+  clearTimeout(brewTimer); setBrewing(true);
+  const my=++seq;
+  brewTimer=setTimeout(()=>{ if(my===seq) brew(cur,my); },delay);
+}
+async function brew(cur,my){
+  const c=cur&&cur.c;
+  if(!c){ render(null,emptyProduct(),null,false); setBrewing(false); return; }
+  const key=(c.id!=null?c.id:('n'+cur.i));
+  const A=window.AI_RECO_ADAPTER;
+  let cloudFail=false;
+  if(A&&typeof A.generateText==='function'){
+    if(cache.has(key)){
+      const got=cache.get(key);
+      if(my===seq){ render(c,got.p,A,false); if(got.img) showImg(got.img,A); setBrewing(false); }
+      return;
+    }
+    try{
+      if(aborter&&aborter.abort){ try{ aborter.abort(); }catch(e){} }
+      aborter=(typeof AbortController!=='undefined')?new AbortController():null;
+      const sig=aborter?aborter.signal:undefined;
+      const pr=buildTextPrompt(c);
+      const raw=await withTimeout(A.generateText({cafe:c,system:pr.system,prompt:pr.user,model:AI_MODELS.text,signal:sig}),22000);
+      if(my!==seq) return;
+      const prod=parseProduct(raw);
+      cache.set(key,{p:prod,img:null});
+      render(c,prod,A,false); setBrewing(false);
+      if(typeof A.generateImage==='function'){
+        const ip=prod.image_prompt||buildImagePrompt(c,prod);
+        withTimeout(A.generateImage({cafe:c,product:prod,prompt:ip,model:AI_MODELS.image,signal:sig}),34000)
+          .then(url=>{ if(url&&my===seq){ showImg(url,A); const e2=cache.get(key); if(e2) e2.img=url; } })
+          .catch(()=>{});
+      }
+      return;
+    }catch(e){ if(my!==seq) return; cloudFail=true; }
+  }
+  if(my!==seq) return;
+  const prod=composeLocal(c,(aiHash(c.short||c.name||'')%9973)+((c.id||0)*97)+(openCount*131));
+  render(c,prod,null,cloudFail); setBrewing(false);
+}
+function emptyProduct(){
+  return {product_name:'虚位以待',en_name:'AWAITING ISLANDS',
+    tagline:'星环还没接到店铺数据',
+    description:'请以静态服务方式打开本站（README「运行」一节），data/cafes.json 载入后，荐杯司会立刻为当前店铺出杯。',
+    flavor_tags:['数据未载入'],pairing:'',best_time:'',serve:'',price_estimate:'',image_prompt:''};
+}
+function render(c,p,adapter,cloudFail){
+  lastProd=p;
+  forEl.textContent=c?('为「'+(c.short||c.name||'—')+'」特调 · '+(c.business_area||'')):'星环虚位 · 待数据';
+  setLaser(nameEl,p.product_name||'—');
+  priceEl.textContent=p.price_estimate||'';
+  enEl.textContent=p.en_name||'';
+  taglEl.textContent=p.tagline?('「 '+p.tagline+' 」'):'';
+  descEl.textContent=p.description||'';
+  tagsEl.innerHTML=(p.flavor_tags||[]).map(t=>'<span class="tag">'+esc(t)+'</span>').join('');
+  const metas=[p.best_time,p.serve,p.pairing].filter(Boolean);
+  metaEl.innerHTML=metas.map(x=>'<span>'+esc(x)+'</span>').join('<i class="aiSep"></i>');
+  capL.textContent='AI · '+((p.serve&&p.serve.indexOf('冰')>=0)?'ICE':'92°C')+' · f/2.8';
+  imgEl.classList.remove('show'); imgEl.removeAttribute('src');
+  chipEl.textContent=adapter?'文案 · 云端已接':'示意 · 生图接入位';
+  const tone=(typeof TONES!=='undefined'&&c&&TONES[c.id])?TONES[c.id]:'#FF9FBE';
+  try{ drawCupArt(artCv,(aiHash((p.product_name||'')+(c?c.id:0))||3),tone); }catch(e){}
+  engEl.textContent=adapter?(String(adapter.label||adapter.name||'OpenRouter')+' · 云端调制')
+                    :(cloudFail?'云端未应答 · 本地演绎':'本地演绎 · 待接 OpenRouter');
+  restagger();
+  if(open&&openK>.5) burstAt(fx+52,fy+34,8,'gold',2.1);
+}
+function restagger(){
+  const rows=panel.querySelectorAll('.aiRow');
+  rows.forEach(el=>el.classList.remove('pop'));
+  void panel.offsetWidth;
+  rows.forEach(el=>el.classList.add('pop'));
+}
+function showImg(url,adapter){
+  imgEl.onload=function(){ imgEl.classList.add('show');
+    chipEl.textContent='AI 生成 · '+String((adapter&&(adapter.imageLabel||''))||'nano-banana'); };
+  imgEl.onerror=function(){ imgEl.classList.remove('show'); };
+  imgEl.src=url;
+}
+
+/* ---------- 开合 ---------- */
+function openPanel(){
+  if(open) return; open=true; openCount++;
+  btn.classList.add('on'); core.setAttribute('aria-pressed','true');
+  subEl.textContent='收起荐签 · CLOSE';
+  panel.classList.add('on'); panel.setAttribute('aria-hidden','false');
+  if(!TOUCH){ fx=clampN(S.px+30,8,S.w-120); fy=clampN(S.py+26,8,S.h-160); }
+  const cur=currentCafe(); curKey=keyOf(cur);
+  scheduleBrew(cur,120);
+  const r=core.getBoundingClientRect();
+  burstAt(r.left+r.width/2,r.top+r.height/2,20,'mint',3.6);
+  zap(lblEl);
+}
+function closePanel(){
+  if(!open) return; open=false;
+  btn.classList.remove('on'); core.setAttribute('aria-pressed','false');
+  subEl.textContent='NEURAL BARISTA · AI';
+  panel.classList.remove('on'); panel.setAttribute('aria-hidden','true');
+  clearTimeout(brewTimer); setBrewing(false); seq++;
+}
+core.addEventListener('click',function(e){ e.stopPropagation(); if(open) closePanel(); else openPanel(); });
+addEventListener('keydown',function(e){
+  if(e.key==='Escape'&&open){ closePanel(); e.stopImmediatePropagation(); }
+},true);
+
+/* ---------- 主循环：可见性 / 落位 / 换店重酿 / 延迟跟随 ---------- */
+function frame(t){
+  if(errs>60) return; /* 熔断：连续异常时静默停摆，不影响主站 */
+  requestAnimationFrame(frame);
+  try{
+    const dt=detailOpen();
+    const vis=!!S.ready&&(dt||chapterAct()===2);
+    if(vis!==shown){
+      shown=vis;
+      btn.classList.toggle('show',vis);
+      btn.setAttribute('aria-hidden',vis?'false':'true');
+      if(vis){ zap(lblEl);
+        const r=core.getBoundingClientRect();
+        burstAt(r.left+r.width/2,r.top+r.height/2,12,'pink',3);
+      } else if(open) closePanel();
+    }
+    if(shown){ place(dt);
+      if(!RM&&t-lastAutoZap>7600){ lastAutoZap=t; zap(lblEl); } }
+    if(open){
+      const cur=currentCafe(); const k=keyOf(cur);
+      if(k!==curKey){ curKey=k; scheduleBrew(cur,560); }
+    }
+    if(open||openK>.012){
+      openK=U.lerp(openK,open?1:0,RM?1:.16);
+      const W=panel.offsetWidth||318, H=panel.offsetHeight||440;
+      let tx,ty;
+      if(TOUCH){
+        tx=S.w-W-14;
+        const bt=btn.getBoundingClientRect().top;
+        ty=clampN(bt-H-12,10,Math.max(10,S.h-H-10));
+      }else{
+        const ox=(S.px+28+W>S.w-10)?-(W+30):28;
+        const oy=(S.py+24+H>S.h-12)?-(H+20):24;
+        tx=clampN(S.px+ox,8,Math.max(8,S.w-W-8));
+        ty=clampN(S.py+oy,8,Math.max(8,S.h-H-8));
+      }
+      const ease=RM?1:.095;
+      fx+=(tx-fx)*ease; fy+=(ty-fy)*ease;
+      const tilt=RM?0:clampN((tx-fx)*.028,-5.5,5.5);
+      const sc=.84+.16*U.smooth(clampN(openK,0,1));
+      panel.style.transform='translate3d('+fx.toFixed(1)+'px,'+fy.toFixed(1)+'px,0) rotate('+tilt.toFixed(2)+'deg) scale('+sc.toFixed(3)+')';
+    }
+    errs=0;
+  }catch(e){ errs++; }
+}
+requestAnimationFrame(frame);
+
+/* ---------- 对外暴露（调试 / 云端适配器共用）---------- */
+window.AIReco={
+  version:'2.5.0',
+  models:AI_MODELS,
+  open:openPanel, close:closePanel,
+  toggle:function(){ if(open) closePanel(); else openPanel(); },
+  refresh:function(){ curKey='∅'; cache.clear(); },
+  buildTextPrompt:buildTextPrompt,
+  buildImagePrompt:buildImagePrompt,
+  get product(){ return lastProd; },
+  get cafe(){ const c=currentCafe(); return c&&c.c; }
+};
+}catch(err){ try{ console.warn('[AIReco] 模块初始化失败（不影响主站）:',err); }catch(e){} }
+})();
+</script>
+
+<!-- 荐杯司 · OpenRouter 适配器：走同域后端代理，避免暴露 API Key -->
+<script src="/ai-reco-adapter.js"></script>
+
 </body>
 </html>

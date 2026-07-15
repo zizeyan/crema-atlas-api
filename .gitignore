@@ -6,3 +6,8 @@ node_modules
 *.log
 
 .vercel
+
+# API keys in workspace subfolders
+cafe-ai/api-key.txt
+cafe01/api-key.txt
+cafe02/api-key.txt

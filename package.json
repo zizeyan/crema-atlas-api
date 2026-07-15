@@ -8,7 +8,9 @@
     "deploy": "vercel --prod"
   },
   "dependencies": {
+    "@ai-sdk/openai": "^4.0.14",
     "@supabase/supabase-js": "^2.45.0",
+    "ai": "^7.0.28",
     "cors": "^2.8.5",
     "express": "^4.19.2"
   },
